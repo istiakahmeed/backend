@@ -14,16 +14,19 @@ _df_state = None
 _device = None
 
 
-def init_model() -> None:
+def init_model() -> bool:
     """
     Initialize DeepFilterNet model at startup.
     Caches the model in memory to avoid reloading on each request.
+    
+    Returns:
+        bool: True if model loaded successfully, False otherwise
     """
     global _model, _df_state, _device
 
     if _model is not None:
         logger.info("DeepFilterNet model already loaded, skipping init")
-        return
+        return True
 
     logger.info("Loading DeepFilterNet 3 model...")
 
@@ -48,21 +51,30 @@ def init_model() -> None:
             f"DeepFilterNet model loaded successfully "
             f"(sr={_df_state.sr()}, device={_device})"
         )
+        return True
 
     except ImportError:
-        logger.error(
+        logger.warning(
             "DeepFilterNet not installed. Install with: pip install deepfilternet"
         )
-        raise
+        return False
     except Exception as e:
-        logger.error(f"Failed to load DeepFilterNet model: {e}")
-        raise
+        logger.warning(
+            f"Failed to load DeepFilterNet model: {e}. "
+            f"Will use alternative noise reduction methods."
+        )
+        return False
+
+
+def is_model_available() -> bool:
+    """Check if DeepFilterNet model is loaded and ready."""
+    return _model is not None and _df_state is not None
 
 
 def enhance_audio(input_path: str, output_path: str) -> str:
     """
-    Enhance audio using DeepFilterNet 3.
-    Removes background noise while preserving voice quality.
+    Enhance audio using DeepFilterNet 3 if available.
+    If model not loaded, copies input to output (processed by noise_reduce later).
 
     Args:
         input_path: Path to input WAV file (48kHz, mono, 16-bit)
@@ -71,10 +83,17 @@ def enhance_audio(input_path: str, output_path: str) -> str:
     Returns:
         Path to the enhanced audio file
     """
+    import shutil
     global _model, _df_state
 
     if _model is None or _df_state is None:
-        raise RuntimeError("DeepFilterNet model not initialized. Call init_model() first.")
+        logger.warning(
+            "DeepFilterNet model not available. Using fallback noise reduction only. "
+            "For best results, ensure torchaudio and deepfilternet are properly installed."
+        )
+        # Copy input to output - will be processed by noise_reduce service
+        shutil.copy2(input_path, output_path)
+        return output_path
 
     from df.enhance import enhance, load_audio, save_audio
 
@@ -111,7 +130,11 @@ def enhance_audio(input_path: str, output_path: str) -> str:
 
     except Exception as e:
         logger.error(f"DeepFilterNet processing failed: {e}")
-        raise RuntimeError(f"AI noise reduction failed: {e}")
+        # Fall back to just copying the file
+        logger.info("Falling back to copying audio without AI enhancement")
+        import shutil
+        shutil.copy2(input_path, output_path)
+        return output_path
 
 
 def get_model_info() -> dict:

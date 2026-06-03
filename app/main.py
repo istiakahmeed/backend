@@ -48,11 +48,17 @@ async def lifespan(app: FastAPI):
     logger.info("Loading AI models...")
     try:
         from app.services.deepfilter import init_model
-        init_model()
-        logger.info("DeepFilterNet model loaded successfully")
+        model_loaded = init_model()
+        if model_loaded:
+            logger.info("✓ DeepFilterNet model loaded successfully")
+        else:
+            logger.warning(
+                "✗ DeepFilterNet model could not be loaded. "
+                "Using fallback noise reduction methods only."
+            )
     except Exception as e:
-        logger.error(f"Failed to load DeepFilterNet: {e}")
-        logger.warning("Server starting WITHOUT AI model - processing will fail!")
+        logger.error(f"Error during model initialization: {e}")
+        logger.warning("Server starting with fallback noise reduction only.")
 
     # Start cleanup task
     cleanup_task = asyncio.create_task(periodic_cleanup())
