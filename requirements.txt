@@ -1,0 +1,21 @@
+# FastAPI & Server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.19
+
+# Audio Processing - AI
+deepfilternet==0.5.6
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Audio Processing - Spectral Gating
+noisereduce==3.0.3
+librosa==0.10.2
+soundfile==0.12.1
+
+# Audio Format Handling
+pydub==0.25.1
+
+# Utilities
+numpy>=1.24.0
+scipy>=1.11.0
