@@ -1,7 +1,8 @@
 FROM python:3.11-slim
 
-# Install system dependencies (ffmpeg and libsndfile1 for audio processing)
+# Install system dependencies (compiler, ffmpeg and libsndfile1 for audio processing)
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     ffmpeg \
     libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
