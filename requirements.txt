@@ -16,6 +16,9 @@ soundfile==0.12.1
 # Audio Format Handling
 pydub==0.25.1
 
+# Voice Activity Detection
+webrtcvad==2.0.10
+
 # Utilities
 numpy>=1.24.0
 scipy>=1.11.0

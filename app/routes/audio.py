@@ -13,6 +13,8 @@ from app.config import (
     MAX_FILE_SIZE_MB,
     ALLOWED_EXTENSIONS,
     TEMP_DIR,
+    QualityMode,
+    DEFAULT_QUALITY_MODE,
 )
 from app.services.pipeline import (
     create_job,
@@ -36,12 +38,30 @@ async def upload_audio(
     helicopter: bool = Form(default=False),
     background_music: bool = Form(default=False),
     water: bool = Form(default=False),
+    quality_mode: str = Form(default=DEFAULT_QUALITY_MODE),
+    max_noise_removal: bool = Form(default=False),
 ):
     """
     Upload an audio file for noise reduction processing.
 
     Accepts: MP3, WAV, M4A, AAC, FLAC (max 100MB)
     Returns: job_id for status polling
+
+    Quality Modes:
+        - light: Minimal noise removal, maximum voice preservation (recommended for clean recordings)
+        - balanced: Natural voice with moderate noise removal (DEFAULT)
+        - strong: More aggressive noise removal, slight voice impact possible
+        - maximum: Maximum suppression, highest artifact risk
+
+    Options:
+        - breath_remover: Remove breath sounds
+        - mouth_sounds_remover: Remove mouth clicks
+        - restaurant_chatter: Suppress background conversations
+        - dog_barking: Suppress dog barking
+        - helicopter: Remove low-frequency rumble
+        - background_music: Attenuate background music
+        - water: Remove water/rain hiss
+        - max_noise_removal: Legacy flag for maximum mode
     """
     # Validate file extension
     if not file.filename:
@@ -80,7 +100,7 @@ async def upload_audio(
 
     logger.info(
         f"File uploaded: {file.filename} ({file_size / 1024:.1f}KB) -> {input_path} "
-        f"(Filters: breath={breath_remover}, music={background_music}, mouth_sounds={mouth_sounds_remover})"
+        f"(quality_mode={quality_mode})"
     )
 
     # Create job and start processing
@@ -95,6 +115,8 @@ async def upload_audio(
         water=water,
         dog_barking=dog_barking,
         restaurant_chatter=restaurant_chatter,
+        quality_mode=quality_mode,
+        max_noise_removal=max_noise_removal,
     )
 
     start_processing(job)
@@ -104,6 +126,7 @@ async def upload_audio(
         "filename": file.filename,
         "file_size": file_size,
         "message": "Processing started",
+        "quality_mode": job.quality_mode,
     }
 
 
@@ -111,7 +134,13 @@ async def upload_audio(
 async def get_status(job_id: str):
     """
     Get the current processing status of a job.
-    Frontend polls this endpoint for real-time updates.
+
+    Returns job info including:
+    - step: Current processing stage
+    - progress: 0-100 percentage
+    - quality_report: Quality metrics (when complete)
+    - noise_profile: Detected noise types (when available)
+    - quality_mode: Processing quality mode used
     """
     job = get_job(job_id)
     if not job:
@@ -120,15 +149,50 @@ async def get_status(job_id: str):
     return job.to_dict()
 
 
+@router.get("/quality-modes")
+async def list_quality_modes():
+    """
+    List available quality modes with descriptions.
+    Frontend can use this to populate a mode selector.
+    """
+    return {
+        "modes": [
+            {
+                "value": "light",
+                "label": "Light",
+                "description": "Minimal noise removal, maximum voice preservation. Best for recordings with low background noise.",
+                "recommended_for": "Clean recordings, interviews in quiet rooms",
+            },
+            {
+                "value": "balanced",
+                "label": "Balanced (Recommended)",
+                "description": "Natural voice quality with moderate noise removal. Default mode. Preserves speech dynamics and tone.",
+                "recommended_for": "Most recordings, podcasts, voiceovers",
+                "default": True,
+            },
+            {
+                "value": "pure_voice",
+                "label": "Pure Voice",
+                "description": "100% original voice preservation. Bypasses all EQ, coloring, and compression, using AI to pull out background noise only.",
+                "recommended_for": "Recordings where you want zero changes to your natural voice tone and dynamics",
+            },
+            {
+                "value": "social_media",
+                "label": "Social Media Ready",
+                "description": "Optimized for mobile speakers. Delivers maximum vocal clarity, warmth, and presence with -14 LUFS level target.",
+                "recommended_for": "YouTube, TikTok, Reels, Shorts, and Podcasts",
+            },
+        ],
+        "default": "balanced",
+    }
+
+
 @router.get("/download/{job_id}")
 async def download_audio(
     job_id: str,
     format: str = Query(default="wav", regex="^(wav|mp3)$"),
 ):
-    """
-    Download the processed (cleaned) audio file.
-    Supports WAV and MP3 output formats.
-    """
+    """Download the processed (cleaned) audio file."""
     job = get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -145,7 +209,6 @@ async def download_audio(
             detail=f"Processing not yet complete. Current step: {job.step.value}",
         )
 
-    # Determine output file path
     job_dir = TEMP_DIR / job.job_id
     if format == "mp3":
         output_file = str(job_dir / "output.mp3")
@@ -155,7 +218,6 @@ async def download_audio(
         media_type = "audio/wav"
 
     if not os.path.exists(output_file):
-        # Fallback: try the other format
         alt_format = "wav" if format == "mp3" else "mp3"
         alt_file = str(job_dir / f"output.{alt_format}")
         if os.path.exists(alt_file):
@@ -164,7 +226,6 @@ async def download_audio(
         else:
             raise HTTPException(status_code=404, detail="Output file not found")
 
-    # Generate download filename
     original_stem = Path(job.original_filename).stem
     download_filename = f"{original_stem}_cleaned.{format}"
 
@@ -180,9 +241,7 @@ async def download_audio(
 
 @router.get("/download-original/{job_id}")
 async def download_original(job_id: str):
-    """
-    Serve the original uploaded audio for comparison playback.
-    """
+    """Serve the original uploaded audio for comparison playback."""
     job = get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")

@@ -1,6 +1,7 @@
 """
 FastAPI application entry point.
 AI Audio Noise Cancellation Tool - Backend Server.
+Enhanced multi-stage pipeline with noise classification, VAD, and quality scoring.
 """
 import logging
 import asyncio
@@ -9,7 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import CORS_ORIGINS, TEMP_DIR
+from app.config import CORS_ORIGINS, TEMP_DIR, QualityMode, DEFAULT_QUALITY_MODE
 from app.routes.audio import router as audio_router
 from app.services.pipeline import cleanup_old_jobs
 
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI):
     # --- Startup ---
     logger.info("=" * 60)
     logger.info("  AI Audio Noise Cancellation Tool - Starting")
+    logger.info("  Enhanced Multi-Stage Pipeline v2.0")
     logger.info("=" * 60)
 
     # Ensure temp directory exists
@@ -59,6 +61,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Error during model initialization: {e}")
         logger.warning("Server starting with fallback noise reduction only.")
+
+    # Check RNNoise availability
+    try:
+        from app.services.rnnoise_service import check_rnnoise_support
+        rnnoise_available = check_rnnoise_support()
+        if rnnoise_available:
+            logger.info("✓ RNNoise (FFmpeg arnndn) available")
+        else:
+            logger.info("○ RNNoise not available (pipeline will skip this stage)")
+    except Exception as e:
+        logger.warning(f"RNNoise check failed: {e}")
+
+    # Log quality modes
+    logger.info(
+        f"Quality modes: {[m.value for m in QualityMode]}, "
+        f"default={DEFAULT_QUALITY_MODE.value}"
+    )
+    logger.info("Voice-preservation-first: balanced mode prioritizes natural speech")
 
     # Start cleanup task
     cleanup_task = asyncio.create_task(periodic_cleanup())
@@ -83,8 +103,12 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="AI Audio Noise Cancellation",
-    description="Remove background noise from audio files using DeepFilterNet 3 AI.",
-    version="1.0.0",
+    description=(
+        "Remove background noise from audio files using a multi-stage AI pipeline: "
+        "DeepFilterNet 3, RNNoise, spectral gating, adaptive noise suppression, "
+        "and professional audio enhancement."
+    ),
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -103,10 +127,16 @@ app.include_router(audio_router)
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint with detailed model/pipeline info."""
     from app.services.deepfilter import get_model_info
+    from app.services.rnnoise_service import get_info as get_rnnoise_info
     return {
         "status": "healthy",
         "service": "AI Audio Noise Cancellation",
-        "model": get_model_info(),
+        "version": "2.0.0",
+        "pipeline_stages": 8,
+        "models": {
+            "deepfilter": get_model_info(),
+            "rnnoise": get_rnnoise_info(),
+        },
     }
