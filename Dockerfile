@@ -22,6 +22,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # and ensuring offline readiness. Placed before copying app source code for layer caching.
 RUN python -c "import sys, types, torchaudio; b = types.ModuleType('torchaudio.backend'); sys.modules['torchaudio.backend'] = b; torchaudio.backend = b; m = types.ModuleType('torchaudio.backend.common'); m.AudioMetaData = getattr(torchaudio, 'AudioMetaData', None); sys.modules['torchaudio.backend.common'] = m; torchaudio.backend.common = m; import df.utils; df.utils.get_git_root = lambda: None; df.utils.get_commit_hash = lambda: None; from df.enhance import init_df; init_df()"
 
+# Ensure the cache is readable/traversable by non-root users at runtime
+RUN chmod -R 755 /app/.cache
+
 # Copy application source code
 COPY app/ ./app/
 
