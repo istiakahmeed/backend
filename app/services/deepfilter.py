@@ -51,7 +51,24 @@ def init_model() -> bool:
 
         logger.info(f"Using device: {_device}")
 
-        _model, _df_state, _ = init_df()
+        # Check if the model weights are pre-downloaded in our Docker cache directory.
+        # This prevents runtime network calls and permission issues on deployed hosts.
+        import os
+        from pathlib import Path
+        xdg_cache = os.environ.get("XDG_CACHE_HOME")
+        if xdg_cache:
+            cached_path = Path(xdg_cache) / "DeepFilterNet" / "DeepFilterNet3"
+        else:
+            cached_path = Path("/app/.cache/DeepFilterNet/DeepFilterNet3")
+
+        if cached_path.exists() and (cached_path / "config.ini").exists():
+            model_dir = str(cached_path)
+            logger.info(f"Loading pre-baked DeepFilterNet model from: {model_dir}")
+        else:
+            model_dir = None  # Fallback to standard appdirs/download behavior
+            logger.info("No pre-baked model found, falling back to standard cache directory lookup")
+
+        _model, _df_state, _ = init_df(model_dir)
 
         logger.info(
             f"DeepFilterNet model loaded successfully "
