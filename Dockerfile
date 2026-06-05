@@ -9,18 +9,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Set cache directory for DeepFilterNet (appdirs uses XDG_CACHE_HOME on Linux)
+ENV XDG_CACHE_HOME=/app/.cache
+RUN mkdir -p /app/.cache
+
 # Copy requirements and install python packages
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download the DeepFilterNet 3 model weights during Docker build stage.
+# This bakes the model weights (50MB) into the Docker image, preventing startup downloads
+# and ensuring offline readiness. Placed before copying app source code for layer caching.
+RUN python -c "from df.enhance import init_df; init_df()"
+
 # Copy application source code
 COPY app/ ./app/
-
-# Create a local cache directory for deepfilternet models (cached during runtime startup)
-# DeepFilterNet downloads model weights (around 50MB) upon model init.
-# We set the cache path environment variable so it persists or is contained.
-ENV DEEPFILTER_CACHE_DIR=/root/.cache/deepfilter
-RUN mkdir -p /root/.cache/deepfilter
 
 # Expose port and run server
 EXPOSE 8000
