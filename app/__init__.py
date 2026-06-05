@@ -23,3 +23,12 @@ try:
         torchaudio.backend.common = m
 except ImportError:
     pass
+
+# Mock git utilities in DeepFilterNet to prevent FileNotFoundError if git is not installed
+try:
+    import df.utils
+    df.utils.get_git_root = lambda: None
+    df.utils.get_commit_hash = lambda: None
+except ImportError:
+    pass
+

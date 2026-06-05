@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Pre-download the DeepFilterNet 3 model weights during Docker build stage.
 # This bakes the model weights (50MB) into the Docker image, preventing startup downloads
 # and ensuring offline readiness. Placed before copying app source code for layer caching.
-RUN python -c "import sys, types, torchaudio; b = types.ModuleType('torchaudio.backend'); sys.modules['torchaudio.backend'] = b; torchaudio.backend = b; m = types.ModuleType('torchaudio.backend.common'); m.AudioMetaData = getattr(torchaudio, 'AudioMetaData', None); sys.modules['torchaudio.backend.common'] = m; torchaudio.backend.common = m; from df.enhance import init_df; init_df()"
+RUN python -c "import sys, types, torchaudio; b = types.ModuleType('torchaudio.backend'); sys.modules['torchaudio.backend'] = b; torchaudio.backend = b; m = types.ModuleType('torchaudio.backend.common'); m.AudioMetaData = getattr(torchaudio, 'AudioMetaData', None); sys.modules['torchaudio.backend.common'] = m; torchaudio.backend.common = m; import df.utils; df.utils.get_git_root = lambda: None; df.utils.get_commit_hash = lambda: None; from df.enhance import init_df; init_df()"
 
 # Copy application source code
 COPY app/ ./app/
